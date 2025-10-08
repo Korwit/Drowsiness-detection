@@ -5,7 +5,6 @@ import cv2
 import os
 import numpy as np
 import face_recognition
-import time
 from playsound import playsound
 import supervision as sv
 from ultralytics import YOLO
@@ -40,11 +39,13 @@ drowsy_start_time = None
 yawn_start_time = None
 alarm_played = False
 
-# Face recognition tracking
-face_locations_last = []
-face_names_last = []
-frame_count = 15
-track_frame_interval = 15  # ตรวจใบหน้าใหม่ทุก 15 เฟรม
+frame_count = 0
+track_frame_interval = 10  # ตรวจใบหน้าใหม่ทุก 10 เฟรม
+
+# Face recognition flags
+face_recognition_locked = False  # True ถ้าเจอ known user แล้ว
+current_user_known = False
+known_user_names = []
 
 # =================================
 # Utility Functions
@@ -85,11 +86,11 @@ def register_face(name):
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             boxes = face_recognition.face_locations(rgb)
             if len(boxes) == 0:
-                print("❌ ไม่พบใบหน้า!")
+                print(" ไม่พบใบหน้า!")
                 continue
             encodings = face_recognition.face_encodings(rgb, boxes)
             np.save(os.path.join(DATA_DIR, f"{name}.npy"), encodings[0])
-            print(f"✅ บันทึกใบหน้า {name} แล้ว!")
+            print(f" บันทึกใบหน้า {name} แล้ว!")
             break
         elif key == ord('q'):
             break
@@ -97,13 +98,9 @@ def register_face(name):
     cv2.destroyAllWindows()
 
 # =================================
-# Face Recognition with N-frame
+# Face Recognition (เรียกครั้งเดียว)
 # =================================
-def recognize_face(frame):
-    global face_locations_last, face_names_last, frame_count
-    frame_count += 1
-
-    # โหลด known faces
+def recognize_face_once(frame):
     known_faces = []
     known_names = []
     for file in os.listdir(DATA_DIR):
@@ -111,49 +108,76 @@ def recognize_face(frame):
             known_faces.append(np.load(os.path.join(DATA_DIR, file)))
             known_names.append(file.replace(".npy", ""))
 
-    # ตรวจใบหน้าใหม่ทุก track_frame_interval
-    if frame_count % track_frame_interval == 0 or len(face_locations_last) == 0:
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        face_locations_last = face_recognition.face_locations(rgb_frame)
-        face_encodings = face_recognition.face_encodings(rgb_frame, face_locations_last)
-        face_names_last = []
+    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    face_locations = face_recognition.face_locations(rgb_frame)
+    face_encodings = face_recognition.face_encodings(rgb_frame, face_locations)
+    face_names = []
 
-        for face_encoding in face_encodings:
-            matches = face_recognition.compare_faces(known_faces, face_encoding, tolerance=0.45)
-            name = "Unknown"
-            if True in matches:
-                name = known_names[matches.index(True)]
-            face_names_last.append(name)
+    for face_encoding in face_encodings:
+        matches = face_recognition.compare_faces(known_faces, face_encoding, tolerance=0.45)
+        name = "Unknown"
+        if True in matches:
+            name = known_names[matches.index(True)]
+        face_names.append(name)
 
     # วาดใบหน้าและชื่อ
-    for (top, right, bottom, left), name in zip(face_locations_last, face_names_last):
+    for (top, right, bottom, left), name in zip(face_locations, face_names):
         cv2.rectangle(frame, (left, top), (right, bottom), (0, 255, 0), 2)
         cv2.putText(frame, name, (left, top-10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
 
-    return frame, face_names_last
+    return frame, face_names
 
 # =================================
 # Webcam Drowsiness + Face Recognition
 # =================================
+# =================================
+# Webcam Drowsiness + Face Recognition (แก้ไข)
+# =================================
 def process_webcam(output_file="output.mp4"):
-    global ear_counter, mar_counter, drowsy_start_time, yawn_start_time, alarm_played
+    global ear_counter, mar_counter, drowsy_start_time, yawn_start_time
+    global frame_count, face_recognition_locked, current_user_known, known_user_names
+
+    # แยก flag สำหรับ alarm แต่ละประเภท
+    alarm_played_ear = False
+    alarm_played_mar = False
+
     cap = cv2.VideoCapture(0)
     if not cap.isOpened():
         print("Error: Could not open webcam.")
         return
 
     box_annotator = sv.BoxAnnotator()
+    frame_count = 0
+    face_recognition_locked = False
+    current_user_known = False
+    known_user_names = []
 
     while True:
         ret, frame = cap.read()
         if not ret:
             break
 
-        # Face recognition
-        frame, names_detected = recognize_face(frame)
+        frame_count += 1
 
-        # ตรวจเฉพาะคนลงทะเบียนแล้ว
-        if "Unknown" not in names_detected and len(names_detected) > 0:
+        # =========================
+        # Face recognition ทุก ๆ track_frame_interval เฟรม
+        # =========================
+        if not face_recognition_locked:
+            if frame_count == 1 or frame_count % track_frame_interval == 0:
+                frame, names_detected = recognize_face_once(frame)
+                if "Unknown" not in names_detected and len(names_detected) > 0:
+                    known_user_names = names_detected
+                    face_recognition_locked = True
+                    current_user_known = True
+                    print(f"✅ Registered user detected: {names_detected}")
+                else:
+                    known_user_names = []
+                    current_user_known = False
+
+        # =========================
+        # Drowsiness detection เฉพาะ known user
+        # =========================
+        if current_user_known:
             results = model(frame)[0]
             detections = sv.Detections.from_ultralytics(results)
             class_names = [model.model.names[int(c)] for c in detections.class_id]
@@ -163,57 +187,58 @@ def process_webcam(output_file="output.mp4"):
                 mp_results = mp_face_mesh.process(rgb_frame)
                 if mp_results.multi_face_landmarks:
                     landmarks = mp_results.multi_face_landmarks[0].landmark
+
                     mar = calculate_mar(landmarks, frame.shape)
                     ear_left = calculate_ear(landmarks, frame.shape, 'left')
                     ear_right = calculate_ear(landmarks, frame.shape, 'right')
-                    ear_avg = (ear_left+ear_right)/2.0
+                    ear_avg = (ear_left + ear_right) / 2.0
 
+                    # =========================
                     # MAR / EAR counters
-                    global mar_counter, ear_counter
+                    # =========================
                     if mar > MAR_THRESHOLD:
                         mar_counter += 1
                     else:
                         mar_counter = 0
+                        alarm_played_mar = False  # reset flag เมื่อเหตุการณ์จบ
 
                     if ear_avg < EAR_THRESHOLD:
                         ear_counter += 1
                     else:
                         ear_counter = 0
+                        alarm_played_ear = False  # reset flag เมื่อเหตุการณ์จบ
 
-                    # Yawning detected N frames
-                    global yawn_start_time, drowsy_start_time
-                    if mar_counter >= MAR_FRAMES and not alarm_played:
-                        print("😮 Yawning detected!")
+                    # =========================
+                    # Alarm
+                    # =========================
+                    if mar_counter >= MAR_FRAMES and not alarm_played_mar:
+                        print(" Yawning detected!")
                         playsound("yawn.mp3")
-                        alarm_played = True
-                        mar_counter = 0
+                        alarm_played_mar = True
                         yawn_start_time = None
 
-                    # Eyes Closed detected N frames
-                    if ear_counter >= EAR_FRAMES and not alarm_played:
-                        print("😴 Eyes closed detected!")
+                    if ear_counter >= EAR_FRAMES and not alarm_played_ear:
+                        print(" Eyes closed detected!")
                         playsound("alarm.mp3")
-                        alarm_played = True
-                        ear_counter = 0
+                        alarm_played_ear = True
                         drowsy_start_time = None
-        else:
-            # คน Unknown ไม่ตรวจ
-            ear_counter = 0
-            mar_counter = 0
-            drowsy_start_time = None
-            yawn_start_time = None
-            alarm_played = False
 
+        # =========================
+        # Annotate frame
+        # =========================
+        results_for_annotate = model(frame)[0]
         annotated = box_annotator.annotate(
             scene=frame.copy(),
-            detections=sv.Detections.from_ultralytics(model(frame)[0])
+            detections=sv.Detections.from_ultralytics(results_for_annotate)
         )
+
         cv2.imshow("Webcam", annotated)
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
 
     cap.release()
     cv2.destroyAllWindows()
+
 
 # =================================
 # Tkinter GUI

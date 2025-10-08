@@ -217,7 +217,7 @@ def process_webcam(output_file="output.mp4"):
         if "Drowsiness" in class_names:
             if drowsy_start_time is None:
                 drowsy_start_time = time.time()
-            elif time.time() - drowsy_start_time >= 3 and not alarm_played:
+            elif time.time() - drowsy_start_time >= 2 and not alarm_played:
                 rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 results_mesh = mp_face_mesh.process(rgb_frame)
                 if results_mesh.multi_face_landmarks:
@@ -285,3 +285,8 @@ def webcam(output_file: str = "output.mp4"):
 
 if __name__ == "__main__":
     app()
+
+
+
+
+

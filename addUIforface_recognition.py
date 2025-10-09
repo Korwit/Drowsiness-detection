@@ -14,6 +14,9 @@ import time
 import csv
 from datetime import datetime
 import threading
+import tkinter.simpledialog as simpledialog
+import subprocess
+import platform
 
 # =================================
 # Load YOLO Drowsiness Model
@@ -32,8 +35,12 @@ EAR_FRAMES = 3
 # =================================
 # Face Recognition Data
 # =================================
-DATA_DIR = "face_data"
-os.makedirs(DATA_DIR, exist_ok=True)
+FACE_DIR = "face_data"
+USER_DIR = "user_data"
+
+os.makedirs(FACE_DIR, exist_ok=True)
+os.makedirs(USER_DIR, exist_ok=True)
+
 
 # =================================
 # Global State
@@ -63,37 +70,30 @@ def play_sound(file_path):
             alarm_running = False
         threading.Thread(target=target, daemon=True).start()
 
+
 def log_drowsiness_event(user_name, event_type):
-    """
-    บันทึกเหตุการณ์ลง CSV
-    user_name: ชื่อผู้ใช้
-    event_type: "Yawning" หรือ "Eyes Closed"
-    """
     if not user_name:
         user_name = "Unknown"
-    file_path = os.path.join(DATA_DIR, f"{user_name}.csv")
+    file_path = os.path.join(USER_DIR, f"{user_name}.csv")  # เปลี่ยนโฟลเดอร์
     now = datetime.now()
 
-    # หา "ครั้งที่" จากจำนวนแถวในไฟล์เดิม
     if os.path.exists(file_path):
         with open(file_path, 'r', encoding='utf-8') as f:
             reader = csv.reader(f)
             rows = list(reader)
-            if len(rows) > 1:
-                count = len(rows)  # header + row = ครั้งที่
-            else:
-                count = 1
+            count = len(rows) if len(rows) > 1 else 1
     else:
         count = 1
 
-    row = [count, now.strftime("%Y-%m-%d"), now.strftime("%H:%M:%S"), event_type]
+    row = [count, now.strftime("%d/%m/%Y"), now.strftime("%H:%M:%S"), event_type]
 
     file_exists = os.path.exists(file_path)
     with open(file_path, 'a', newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
         if not file_exists:
-            writer.writerow(["ครั้งที่", "Date", "Time", "Event"])  # header
+            writer.writerow(["number", "Date", "Time", "Event"])
         writer.writerow(row)
+
 
 
 
@@ -142,7 +142,7 @@ def is_face_straight(landmarks, image_shape, threshold=0.15):
     return face_ratio < threshold  # True = หน้าตรง
 
 def register_face(name):
-    file_path = os.path.join(DATA_DIR, f"{name}.npy")
+    file_path = os.path.join(FACE_DIR, f"{name}.npy")
     if os.path.exists(file_path):
         messagebox.showwarning("ชื่อซ้ำ", f"ชื่อ '{name}' มีอยู่แล้ว!\nกรุณาใช้ชื่ออื่น")
         print(f"ชื่อ '{name}' มีอยู่แล้ว!")
@@ -204,9 +204,9 @@ def register_face(name):
 
             known_faces = []
             known_names = []
-            for file in os.listdir(DATA_DIR):
+            for file in os.listdir(FACE_DIR):
                 if file.endswith(".npy"):
-                    known_faces.append(np.load(os.path.join(DATA_DIR, file)))
+                    known_faces.append(np.load(os.path.join(FACE_DIR, file)))
                     known_names.append(file.replace(".npy", ""))
 
             duplicate_found = False
@@ -249,9 +249,9 @@ def register_face(name):
 def recognize_face_once(frame):
     known_faces = []
     known_names = []
-    for file in os.listdir(DATA_DIR):
+    for file in os.listdir(FACE_DIR):
         if file.endswith(".npy"):
-            known_faces.append(np.load(os.path.join(DATA_DIR, file)))
+            known_faces.append(np.load(os.path.join(FACE_DIR, file)))
             known_names.append(file.replace(".npy", ""))
 
     rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -411,24 +411,139 @@ def process_webcam(output_file="output.mp4"):
 
 
 # =================================
-# Tkinter GUI
+# Tkinter GUI with user management
 # =================================
-def start_register(name_entry):
+def start_register(name_entry, user_listbox):
     name = name_entry.get().strip()
     if not name:
         messagebox.showwarning("ข้อผิดพลาด", "กรุณากรอกชื่อก่อน!")
         return
     register_face(name)
+    refresh_user_list(user_listbox)
+
+def refresh_user_list(listbox):
+    listbox.delete(0, tk.END)
+    for file in os.listdir(FACE_DIR):
+        if file.endswith(".npy"):
+            name = file.replace(".npy", "")
+            listbox.insert(tk.END, name)
+
+def delete_user(listbox):
+    selected = listbox.curselection()
+    if not selected:
+        messagebox.showwarning("ข้อผิดพลาด", "กรุณาเลือกผู้ใช้ก่อน")
+        return
+    name = listbox.get(selected[0])
+    confirm = messagebox.askyesno("ยืนยันการลบ", f"คุณต้องการลบผู้ใช้ '{name}' ใช่หรือไม่?")
+    if confirm:
+        npy_file = os.path.join(FACE_DIR, f"{name}.npy")
+        csv_file = os.path.join(USER_DIR, f"{name}.csv")  # เปลี่ยนโฟลเดอร์ CSV
+        for f in [npy_file, csv_file]:
+            if os.path.exists(f):
+                os.remove(f)
+        refresh_user_list(listbox)
+        messagebox.showinfo("สำเร็จ", f"ผู้ใช้ '{name}' ถูกลบแล้ว")
+
+def rename_user(listbox):
+    selected = listbox.curselection()
+    if not selected:
+        messagebox.showwarning("ข้อผิดพลาด", "กรุณาเลือกผู้ใช้ก่อน")
+        return
+    old_name = listbox.get(selected[0])
+    new_name = simpledialog.askstring("เปลี่ยนชื่อ", f"เปลี่ยนชื่อ '{old_name}' เป็น:")
+    if not new_name:
+        return
+
+    if os.path.exists(os.path.join(FACE_DIR, f"{new_name}.npy")):
+        messagebox.showwarning("ชื่อซ้ำ", f"ชื่อ '{new_name}' มีอยู่แล้ว")
+        return
+
+    old_npy = os.path.join(FACE_DIR, f"{old_name}.npy")
+    old_csv = os.path.join(USER_DIR, f"{old_name}.csv")
+    new_npy = os.path.join(FACE_DIR, f"{new_name}.npy")
+    new_csv = os.path.join(USER_DIR, f"{new_name}.csv")
+    if os.path.exists(old_npy):
+        os.rename(old_npy, new_npy)
+    if os.path.exists(old_csv):
+        os.rename(old_csv, new_csv)
+
+    refresh_user_list(listbox)
+    messagebox.showinfo("สำเร็จ", f"เปลี่ยนชื่อ '{old_name}' เป็น '{new_name}' เรียบร้อยแล้ว")
+
+
+def open_csv_window():
+    csv_window = tk.Toplevel()
+    csv_window.title("Open CSV Files")
+    csv_window.geometry("400x300")
+
+    tk.Label(csv_window, text="Available CSV files:").pack(pady=5)
+
+    csv_listbox = tk.Listbox(csv_window, width=40, height=10)
+    csv_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(10,0))
+
+    scrollbar = tk.Scrollbar(csv_window)
+    scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+    csv_listbox.config(yscrollcommand=scrollbar.set)
+    scrollbar.config(command=csv_listbox.yview)
+
+    # โหลด CSV files จาก USER_DIR
+    csv_files = [f for f in os.listdir(USER_DIR) if f.endswith(".csv")]
+    for f in csv_files:
+        csv_listbox.insert(tk.END, f)
+
+    def open_selected_csv():
+        selected = csv_listbox.curselection()
+        if not selected:
+            return
+        file_path = os.path.join(USER_DIR, csv_listbox.get(selected[0]))
+        system_name = platform.system()
+        try:
+            if system_name == "Windows":
+                os.startfile(file_path)
+            elif system_name == "Darwin":
+                subprocess.call(["open", file_path])
+            else:
+                subprocess.call(["xdg-open", file_path])
+        except Exception as e:
+            tk.messagebox.showerror("Error", f"Cannot open file:\n{e}")
+
+    tk.Button(csv_window, text="Open in Excel", command=open_selected_csv).pack(pady=5)
 
 def open_register_ui():
     root = tk.Tk()
     root.title("Driver Monitoring - Register Face")
 
+    # ตั้งขนาดหน้าต่างเริ่มต้น
+    root.geometry("500x400")  # กว้าง 500 px, สูง 400 px
+
+    # ---------- Entry + Register ----------
     tk.Label(root, text="Enter Name:").pack(pady=5)
     name_entry = tk.Entry(root)
     name_entry.pack(pady=5)
 
-    tk.Button(root, text="Register Face", command=partial(start_register, name_entry)).pack(pady=5)
+    tk.Button(root, text="Register Face", command=lambda: start_register(name_entry, user_listbox)).pack(pady=5)
+
+    # ---------- Frame สำหรับ Listbox + Scrollbar ----------
+    list_frame = tk.Frame(root)
+    list_frame.pack(pady=5)
+
+    user_listbox = tk.Listbox(list_frame, width=30, height=10)
+    user_listbox.pack(side=tk.LEFT, fill=tk.BOTH)
+
+    scrollbar = tk.Scrollbar(list_frame)
+    scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+    # เชื่อม Listbox กับ Scrollbar
+    user_listbox.config(yscrollcommand=scrollbar.set)
+    scrollbar.config(command=user_listbox.yview)
+
+    refresh_user_list(user_listbox)
+
+    # ---------- ปุ่ม Delete, Rename, Close ----------
+    tk.Button(root, text="Delete User", command=lambda: delete_user(user_listbox)).pack(pady=2)
+    tk.Button(root, text="Rename User", command=lambda: rename_user(user_listbox)).pack(pady=2)
+    tk.Button(root, text="Open CSV", command=open_csv_window).pack(pady=5)
+
     tk.Button(root, text="Close", command=root.destroy).pack(pady=5)
 
     root.mainloop()

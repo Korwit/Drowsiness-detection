@@ -477,7 +477,7 @@ def rename_user(listbox):
 def open_csv_window():
     csv_window = tk.Toplevel()
     csv_window.title("Open CSV Files")
-    csv_window.geometry("300x300")
+    csv_window.geometry("400x300")
 
     tk.Label(csv_window, text="Available CSV files:").pack(pady=5)
 
@@ -497,9 +497,12 @@ def open_csv_window():
     def open_selected_csv():
         selected = csv_listbox.curselection()
         if not selected:
+            tk.messagebox.showwarning("คำเตือน", "กรุณาเลือกไฟล์ CSV ก่อนเปิดใน Excel!")
             return
+
         file_path = os.path.join(USER_DIR, csv_listbox.get(selected[0]))
         system_name = platform.system()
+
         try:
             if system_name == "Windows":
                 os.startfile(file_path)
@@ -508,9 +511,10 @@ def open_csv_window():
             else:
                 subprocess.call(["xdg-open", file_path])
         except Exception as e:
-            tk.messagebox.showerror("Error", f"Cannot open file:\n{e}")
+            tk.messagebox.showerror("ข้อผิดพลาด", f"ไม่สามารถเปิดไฟล์ได้:\n{e}")
 
     tk.Button(csv_window, text="Open in Excel", command=open_selected_csv).pack(pady=5)
+
 
 def open_register_ui():
     root = tk.Tk()

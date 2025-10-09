@@ -62,14 +62,28 @@ def log_drowsiness_event(user_name, event_type):
         user_name = "Unknown"
     file_path = os.path.join(DATA_DIR, f"{user_name}.csv")
     now = datetime.now()
-    row = [frame_count, now.strftime("%Y-%m-%d"), now.strftime("%H:%M:%S"), event_type]
+
+    # หา "ครั้งที่" จากจำนวนแถวในไฟล์เดิม
+    if os.path.exists(file_path):
+        with open(file_path, 'r', encoding='utf-8') as f:
+            reader = csv.reader(f)
+            rows = list(reader)
+            if len(rows) > 1:
+                count = len(rows)  # header + row = ครั้งที่
+            else:
+                count = 1
+    else:
+        count = 1
+
+    row = [count, now.strftime("%Y-%m-%d"), now.strftime("%H:%M:%S"), event_type]
 
     file_exists = os.path.exists(file_path)
     with open(file_path, 'a', newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
         if not file_exists:
-            writer.writerow(["Frame", "Date", "Time", "Event"])  # header
+            writer.writerow(["ครั้งที่", "Date", "Time", "Event"])  # header
         writer.writerow(row)
+
 
 
 # =================================
@@ -130,7 +144,7 @@ def register_face(name):
         ret, frame = cap.read()
         if not ret:
             break
-        frame = preprocess_frame(frame)
+      
         cv2.putText(frame, "Press 'S' to Save  |  'Q' to Quit",
                     (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2, cv2.LINE_AA)
 
@@ -292,6 +306,7 @@ def process_webcam(output_file="output.mp4"):
                 frame, names_detected = recognize_face_once(frame)
                 if "Unknown" not in names_detected and len(names_detected) > 0:
                     known_user_names = names_detected
+                    playsound("hi.mp3")
                     face_recognition_locked = True
                     current_user_known = True
                     print(f"✅ Registered user detected: {names_detected}")
@@ -320,14 +335,15 @@ def process_webcam(output_file="output.mp4"):
 
                     current_time = time.time()
 
-                    # =========================
+                   # =========================
                     # MAR / EAR counters
                     # =========================
+                    # ตรวจหาว
                     if mar > MAR_THRESHOLD:
                         mar_counter += 1
                         if yawn_start_time is None:
                             yawn_start_time = current_time
-                        elif mar_counter >= MAR_FRAMES and current_time - yawn_start_time >= 1.0 and not alarm_played_mar:
+                        elif mar_counter >= MAR_FRAMES and current_time - yawn_start_time >= 0.5 and not alarm_played_mar:
                             print("😮 Yawning detected!")
                             playsound("yawn.mp3")
                             yawning_detected = True
@@ -339,13 +355,14 @@ def process_webcam(output_file="output.mp4"):
                         yawn_start_time = None
                         alarm_played_mar = False
 
+                    # ตรวจตาปิด / ง่วงนอน (สำคัญที่สุด)
                     if ear_avg < EAR_THRESHOLD:
                         ear_counter += 1
                         if drowsy_start_time is None:
                             drowsy_start_time = current_time
-                        elif ear_counter >= EAR_FRAMES and current_time - drowsy_start_time >= 2.5 and not alarm_played_ear:
+                        elif ear_counter >= EAR_FRAMES and current_time - drowsy_start_time >= 1.5 and not alarm_played_ear:
                             print("😴 Eyes closed detected!")
-                            playsound("alarm.mp3")
+                            playsound("alarm.mp3")  # เล่นทันทีโดยไม่สนใจ yawn
                             eyes_closed_detected = True
                             alarm_played_ear = True
                             if known_user_names:
@@ -354,6 +371,7 @@ def process_webcam(output_file="output.mp4"):
                         ear_counter = 0
                         drowsy_start_time = None
                         alarm_played_ear = False
+
 
         # =========================
         # Annotate frame (Box + Label)

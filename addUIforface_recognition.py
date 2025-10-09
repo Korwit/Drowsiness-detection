@@ -418,6 +418,9 @@ def start_register(name_entry, user_listbox):
     if not name:
         messagebox.showwarning("ข้อผิดพลาด", "กรุณากรอกชื่อก่อน!")
         return
+    # ล้าง Entry ทันที
+    name_entry.delete(0, tk.END)
+    
     register_face(name)
     refresh_user_list(user_listbox)
 

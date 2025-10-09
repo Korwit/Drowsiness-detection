@@ -163,7 +163,14 @@ def register_face(name):
                     duplicate_found = True
                     messagebox.showwarning("พบใบหน้าซ้ำ", f"ใบหน้านี้เคยลงทะเบียนเป็น '{existing_name}' แล้ว!")
                     print(f"ใบหน้านี้ตรงกับ {existing_name} ที่มีอยู่แล้ว")
+                    
+                    # นำ focus กลับมาที่ OpenCV
+                    cv2.namedWindow("Register Face", cv2.WINDOW_NORMAL)
+                    cv2.setWindowProperty("Register Face", cv2.WND_PROP_TOPMOST, 1)
+                    cv2.setWindowProperty("Register Face", cv2.WND_PROP_TOPMOST, 0)
+                    
                     break
+
 
             if duplicate_found:
                 continue

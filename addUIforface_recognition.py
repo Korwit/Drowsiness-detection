@@ -1,6 +1,7 @@
 import argparse
 from functools import partial
 import tkinter as tk
+from tkinter import messagebox
 import cv2
 import os
 import numpy as np
@@ -37,7 +38,6 @@ ear_counter = 0
 mar_counter = 0
 drowsy_start_time = None
 yawn_start_time = None
-alarm_played = False
 
 frame_count = 0
 track_frame_interval = 10  # ตรวจใบหน้าใหม่ทุก 10 เฟรม
@@ -71,9 +71,15 @@ def calculate_ear(landmarks, image_shape, eye='left'):
     return (A+B)/(2.0*C)
 
 # =================================
-# Face Registration
+# Face Registration (ป้องกันชื่อซ้ำ)
 # =================================
 def register_face(name):
+    file_path = os.path.join(DATA_DIR, f"{name}.npy")
+    if os.path.exists(file_path):
+        messagebox.showwarning("ชื่อซ้ำ", f" ชื่อ '{name}' มีอยู่แล้ว!\nกรุณาใช้ชื่ออื่น")
+        print(f" ชื่อ '{name}' มีอยู่แล้ว!")
+        return
+
     cap = cv2.VideoCapture(0)
     print(f"กำลังบันทึกใบหน้า: {name} (กด 's' เพื่อบันทึก, 'q' เพื่อออก)")
     while True:
@@ -86,11 +92,12 @@ def register_face(name):
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             boxes = face_recognition.face_locations(rgb)
             if len(boxes) == 0:
-                print(" ไม่พบใบหน้า!")
+                print("❌ ไม่พบใบหน้า!")
                 continue
             encodings = face_recognition.face_encodings(rgb, boxes)
-            np.save(os.path.join(DATA_DIR, f"{name}.npy"), encodings[0])
-            print(f" บันทึกใบหน้า {name} แล้ว!")
+            np.save(file_path, encodings[0])
+            print(f"✅ บันทึกใบหน้า {name} แล้ว!")
+            messagebox.showinfo("สำเร็จ", f"✅ บันทึกใบหน้า {name} เรียบร้อยแล้ว!")
             break
         elif key == ord('q'):
             break
@@ -123,15 +130,13 @@ def recognize_face_once(frame):
     # วาดใบหน้าและชื่อ
     for (top, right, bottom, left), name in zip(face_locations, face_names):
         cv2.rectangle(frame, (left, top), (right, bottom), (0, 255, 0), 2)
-        cv2.putText(frame, name, (left, top-10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+        cv2.putText(frame, name, (left, top-10),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
 
     return frame, face_names
 
 # =================================
 # Webcam Drowsiness + Face Recognition
-# =================================
-# =================================
-# Webcam Drowsiness + Face Recognition (แก้ไข)
 # =================================
 def process_webcam(output_file="output.mp4"):
     global ear_counter, mar_counter, drowsy_start_time, yawn_start_time
@@ -212,13 +217,13 @@ def process_webcam(output_file="output.mp4"):
                     # Alarm
                     # =========================
                     if mar_counter >= MAR_FRAMES and not alarm_played_mar:
-                        print(" Yawning detected!")
+                        print("😮 Yawning detected!")
                         playsound("yawn.mp3")
                         alarm_played_mar = True
                         yawn_start_time = None
 
                     if ear_counter >= EAR_FRAMES and not alarm_played_ear:
-                        print(" Eyes closed detected!")
+                        print("😴 Eyes closed detected!")
                         playsound("alarm.mp3")
                         alarm_played_ear = True
                         drowsy_start_time = None
@@ -239,25 +244,26 @@ def process_webcam(output_file="output.mp4"):
     cap.release()
     cv2.destroyAllWindows()
 
-
 # =================================
 # Tkinter GUI
 # =================================
 def start_register(name_entry):
-    name = name_entry.get()
-    if name.strip():
-        register_face(name)
+    name = name_entry.get().strip()
+    if not name:
+        messagebox.showwarning("ข้อผิดพลาด", "กรุณากรอกชื่อก่อน!")
+        return
+    register_face(name)
 
 def open_register_ui():
     root = tk.Tk()
     root.title("Driver Monitoring - Register Face")
 
-    tk.Label(root, text="Enter Name:").pack()
+    tk.Label(root, text="Enter Name:").pack(pady=5)
     name_entry = tk.Entry(root)
-    name_entry.pack()
+    name_entry.pack(pady=5)
 
-    tk.Button(root, text="Register Face", command=partial(start_register, name_entry)).pack()
-    tk.Button(root, text="Close", command=root.destroy).pack()
+    tk.Button(root, text="Register Face", command=partial(start_register, name_entry)).pack(pady=5)
+    tk.Button(root, text="Close", command=root.destroy).pack(pady=5)
 
     root.mainloop()
 
@@ -266,7 +272,8 @@ def open_register_ui():
 # =================================
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("mode", choices=["webcam", "register"], help="Mode: 'webcam' to start camera, 'register' to register face")
+    parser.add_argument("mode", choices=["webcam", "register"],
+                        help="Mode: 'webcam' to start camera, 'register' to register face")
     args = parser.parse_args()
 
     if args.mode == "webcam":

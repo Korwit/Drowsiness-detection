@@ -11,6 +11,8 @@ import supervision as sv
 from ultralytics import YOLO
 import mediapipe as mp
 import time
+import csv
+from datetime import datetime
 
 # =================================
 # Load YOLO Drowsiness Model
@@ -48,6 +50,28 @@ face_recognition_locked = False  # True ถ้าเจอ known user แล้�
 current_user_known = False
 known_user_names = []
 
+
+
+def log_drowsiness_event(user_name, event_type):
+    """
+    บันทึกเหตุการณ์ลง CSV
+    user_name: ชื่อผู้ใช้
+    event_type: "Yawning" หรือ "Eyes Closed"
+    """
+    if not user_name:
+        user_name = "Unknown"
+    file_path = os.path.join(DATA_DIR, f"{user_name}.csv")
+    now = datetime.now()
+    row = [frame_count, now.strftime("%Y-%m-%d"), now.strftime("%H:%M:%S"), event_type]
+
+    file_exists = os.path.exists(file_path)
+    with open(file_path, 'a', newline='', encoding='utf-8') as f:
+        writer = csv.writer(f)
+        if not file_exists:
+            writer.writerow(["Frame", "Date", "Time", "Event"])  # header
+        writer.writerow(row)
+
+
 # =================================
 # Utility Functions
 # =================================
@@ -70,6 +94,9 @@ def calculate_ear(landmarks, image_shape, eye='left'):
     B = np.linalg.norm(xy(p3)-xy(p5))
     C = np.linalg.norm(xy(p1)-xy(p4))
     return (A+B)/(2.0*C)
+
+
+
 
 # =================================
 # Face Registration (ป้องกันชื่อซ้ำ)
@@ -103,7 +130,7 @@ def register_face(name):
         ret, frame = cap.read()
         if not ret:
             break
-
+        frame = preprocess_frame(frame)
         cv2.putText(frame, "Press 'S' to Save  |  'Q' to Quit",
                     (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2, cv2.LINE_AA)
 
@@ -305,6 +332,8 @@ def process_webcam(output_file="output.mp4"):
                             playsound("yawn.mp3")
                             yawning_detected = True
                             alarm_played_mar = True
+                            if known_user_names:
+                                log_drowsiness_event(known_user_names[0], "Yawning")
                     else:
                         mar_counter = 0
                         yawn_start_time = None
@@ -319,6 +348,8 @@ def process_webcam(output_file="output.mp4"):
                             playsound("alarm.mp3")
                             eyes_closed_detected = True
                             alarm_played_ear = True
+                            if known_user_names:
+                                log_drowsiness_event(known_user_names[0], "Eyes Closed")
                     else:
                         ear_counter = 0
                         drowsy_start_time = None

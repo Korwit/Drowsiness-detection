@@ -50,9 +50,18 @@ track_frame_interval = 10  # ตรวจใบหน้าใหม่ทุก
 face_recognition_locked = False  # True ถ้าเจอ known user แล้ว
 current_user_known = False
 known_user_names = []
+last_yawn_time = 0  
+alarm_running = False
 
-def play_sound(file_path): 
-    threading.Thread(target=playsound, args=(file_path,), daemon=True).start()
+def play_sound(file_path):
+    global alarm_running
+    if not alarm_running:
+        def target():
+            global alarm_running
+            alarm_running = True
+            playsound(file_path)
+            alarm_running = False
+        threading.Thread(target=target, daemon=True).start()
 
 def log_drowsiness_event(user_name, event_type):
     """
@@ -268,12 +277,11 @@ def recognize_face_once(frame):
 # =================================
 # Webcam Drowsiness + Face Recognition
 # =================================
-# =================================
-# Webcam Drowsiness + Face Recognition
-# =================================
+
+
 def process_webcam(output_file="output.mp4"):
     global ear_counter, mar_counter, drowsy_start_time, yawn_start_time
-    global frame_count, face_recognition_locked, current_user_known, known_user_names
+    global frame_count, face_recognition_locked, current_user_known, known_user_names,last_yawn_time
 
     # แยก flag สำหรับ alarm แต่ละประเภท
     alarm_played_ear = False
@@ -348,6 +356,7 @@ def process_webcam(output_file="output.mp4"):
                         elif mar_counter >= MAR_FRAMES and current_time - yawn_start_time >= 0.5 and not alarm_played_mar:
                             print("😮 Yawning detected!")
                             play_sound("yawn.mp3")
+                            last_yawn_time = current_time
                             yawning_detected = True
                             alarm_played_mar = True
                             if known_user_names:
@@ -357,22 +366,23 @@ def process_webcam(output_file="output.mp4"):
                         yawn_start_time = None
                         alarm_played_mar = False
 
-                    # ตรวจตาปิด / ง่วงนอน (สำคัญที่สุด)
+                    # -------------------------
+                    # ตรวจตาปิด / ง่วงนอน
+                    # -------------------------
                     if ear_avg < EAR_THRESHOLD:
-                        ear_counter += 1
-                        if drowsy_start_time is None:
-                            drowsy_start_time = current_time
-                        elif ear_counter >= EAR_FRAMES and current_time - drowsy_start_time >= 1.5 and not alarm_played_ear:
-                            print("😴 Eyes closed detected!")
-                            play_sound("alarm.mp3")  # เล่นทันทีโดยไม่สนใจ yawn
-                            eyes_closed_detected = True
-                            alarm_played_ear = True
-                            if known_user_names:
-                                log_drowsiness_event(known_user_names[0], "Eyes Closed")
+                        # ตรวจว่าเสียง yawn เล่นจบไปแล้ว 2 วินาทีขึ้นไป และ alarm ไม่ซ้อน
+                        if current_time - last_yawn_time >= 2.0 and not alarm_running:
+                            if drowsy_start_time is None:
+                                drowsy_start_time = current_time
+
+                            if current_time - drowsy_start_time >= 2.0:
+                                print("😴 Eyes closed detected! Alarm!")
+                                play_sound("alarm.mp3")
+                                if known_user_names:
+                                    log_drowsiness_event(known_user_names[0], "Eyes Closed")
+                                drowsy_start_time = current_time
                     else:
-                        ear_counter = 0
                         drowsy_start_time = None
-                        alarm_played_ear = False
 
 
         # =========================

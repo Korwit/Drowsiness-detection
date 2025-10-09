@@ -420,7 +420,7 @@ def start_register(name_entry, user_listbox):
         return
     # ล้าง Entry ทันที
     name_entry.delete(0, tk.END)
-    
+
     register_face(name)
     refresh_user_list(user_listbox)
 
@@ -477,11 +477,11 @@ def rename_user(listbox):
 def open_csv_window():
     csv_window = tk.Toplevel()
     csv_window.title("Open CSV Files")
-    csv_window.geometry("400x300")
+    csv_window.geometry("300x300")
 
     tk.Label(csv_window, text="Available CSV files:").pack(pady=5)
 
-    csv_listbox = tk.Listbox(csv_window, width=40, height=10)
+    csv_listbox = tk.Listbox(csv_window, width=20, height=10)
     csv_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(10,0))
 
     scrollbar = tk.Scrollbar(csv_window)
@@ -514,10 +514,10 @@ def open_csv_window():
 
 def open_register_ui():
     root = tk.Tk()
-    root.title("Driver Monitoring - Register Face")
+    root.title("Driver Monitoring")
 
     # ตั้งขนาดหน้าต่างเริ่มต้น
-    root.geometry("500x400")  # กว้าง 500 px, สูง 400 px
+    root.geometry("350x400")  # กว้าง 350 px, สูง 400 px
 
     # ---------- Entry + Register ----------
     tk.Label(root, text="Enter Name:").pack(pady=5)

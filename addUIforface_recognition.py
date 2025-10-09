@@ -10,6 +10,7 @@ from playsound import playsound
 import supervision as sv
 from ultralytics import YOLO
 import mediapipe as mp
+import time
 
 # =================================
 # Load YOLO Drowsiness Model
@@ -20,7 +21,7 @@ model = YOLO("drowsy.pt")
 # Mediapipe Face Mesh
 # =================================
 mp_face_mesh = mp.solutions.face_mesh.FaceMesh(static_image_mode=False)
-MAR_THRESHOLD = 0.75
+MAR_THRESHOLD = 0.78
 EAR_THRESHOLD = 0.25
 MAR_FRAMES = 3
 EAR_FRAMES = 3
@@ -224,6 +225,9 @@ def recognize_face_once(frame):
 # =================================
 # Webcam Drowsiness + Face Recognition
 # =================================
+# =================================
+# Webcam Drowsiness + Face Recognition
+# =================================
 def process_webcam(output_file="output.mp4"):
     global ear_counter, mar_counter, drowsy_start_time, yawn_start_time
     global frame_count, face_recognition_locked, current_user_known, known_user_names
@@ -238,6 +242,7 @@ def process_webcam(output_file="output.mp4"):
         return
 
     box_annotator = sv.BoxAnnotator()
+    label_annotator = sv.LabelAnnotator()
     frame_count = 0
     face_recognition_locked = False
     current_user_known = False
@@ -249,6 +254,8 @@ def process_webcam(output_file="output.mp4"):
             break
 
         frame_count += 1
+        yawning_detected = False
+        eyes_closed_detected = False
 
         # =========================
         # Face recognition ทุก ๆ track_frame_interval เฟรม
@@ -284,51 +291,63 @@ def process_webcam(output_file="output.mp4"):
                     ear_right = calculate_ear(landmarks, frame.shape, 'right')
                     ear_avg = (ear_left + ear_right) / 2.0
 
+                    current_time = time.time()
+
                     # =========================
                     # MAR / EAR counters
                     # =========================
                     if mar > MAR_THRESHOLD:
                         mar_counter += 1
+                        if yawn_start_time is None:
+                            yawn_start_time = current_time
+                        elif mar_counter >= MAR_FRAMES and current_time - yawn_start_time >= 1.0 and not alarm_played_mar:
+                            print("😮 Yawning detected!")
+                            playsound("yawn.mp3")
+                            yawning_detected = True
+                            alarm_played_mar = True
                     else:
                         mar_counter = 0
-                        alarm_played_mar = False  # reset flag เมื่อเหตุการณ์จบ
+                        yawn_start_time = None
+                        alarm_played_mar = False
 
                     if ear_avg < EAR_THRESHOLD:
                         ear_counter += 1
+                        if drowsy_start_time is None:
+                            drowsy_start_time = current_time
+                        elif ear_counter >= EAR_FRAMES and current_time - drowsy_start_time >= 2.5 and not alarm_played_ear:
+                            print("😴 Eyes closed detected!")
+                            playsound("alarm.mp3")
+                            eyes_closed_detected = True
+                            alarm_played_ear = True
                     else:
                         ear_counter = 0
-                        alarm_played_ear = False  # reset flag เมื่อเหตุการณ์จบ
-
-                    # =========================
-                    # Alarm
-                    # =========================
-                    if mar_counter >= MAR_FRAMES and not alarm_played_mar:
-                        print("😮 Yawning detected!")
-                        playsound("yawn.mp3")
-                        alarm_played_mar = True
-                        yawn_start_time = None
-
-                    if ear_counter >= EAR_FRAMES and not alarm_played_ear:
-                        print("😴 Eyes closed detected!")
-                        playsound("alarm.mp3")
-                        alarm_played_ear = True
                         drowsy_start_time = None
+                        alarm_played_ear = False
 
         # =========================
-        # Annotate frame
+        # Annotate frame (Box + Label)
         # =========================
         results_for_annotate = model(frame)[0]
-        annotated = box_annotator.annotate(
-            scene=frame.copy(),
-            detections=sv.Detections.from_ultralytics(results_for_annotate)
-        )
+        detections_for_annotate = sv.Detections.from_ultralytics(results_for_annotate)
+        labels = [f"{model.model.names[int(cid)]} {conf:.2f}" 
+                  for cid, conf in zip(detections_for_annotate.class_id, detections_for_annotate.confidence)]
 
-        cv2.imshow("Webcam", annotated)
+        annotated_frame = box_annotator.annotate(scene=frame.copy(), detections=detections_for_annotate)
+        annotated_frame = label_annotator.annotate(scene=annotated_frame, detections=detections_for_annotate, labels=labels)
+
+        # ข้อความสีแดงบนหน้าจอ
+        if yawning_detected:
+            cv2.putText(annotated_frame, "Yawning!", (30, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0,0,255), 3)
+        elif eyes_closed_detected:
+            cv2.putText(annotated_frame, "Eyes Closed!", (30,50), cv2.FONT_HERSHEY_SIMPLEX,1.2,(0,0,255),3)
+
+        cv2.imshow("Webcam", annotated_frame)
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
 
     cap.release()
     cv2.destroyAllWindows()
+
 
 # =================================
 # Tkinter GUI

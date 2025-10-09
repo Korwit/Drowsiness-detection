@@ -73,6 +73,21 @@ def calculate_ear(landmarks, image_shape, eye='left'):
 # =================================
 # Face Registration (ป้องกันชื่อซ้ำ)
 # =================================
+def is_face_straight(landmarks, image_shape, threshold=0.15):
+    """ตรวจว่าหน้าตรงหรือไม่"""
+    h, w = image_shape[:2]
+
+    def xy(idx):
+        return np.array([landmarks[idx].x * w, landmarks[idx].y * h])
+
+    nose_tip = xy(1)
+    left_eye = xy(33)
+    right_eye = xy(263)
+
+    eye_center_x = (left_eye[0] + right_eye[0]) / 2
+    face_ratio = abs(nose_tip[0] - eye_center_x) / np.linalg.norm(right_eye - left_eye)
+    return face_ratio < threshold  # True = หน้าตรง
+
 def register_face(name):
     file_path = os.path.join(DATA_DIR, f"{name}.npy")
     if os.path.exists(file_path):
@@ -88,7 +103,6 @@ def register_face(name):
         if not ret:
             break
 
-        # ข้อความบนหน้าจอ
         cv2.putText(frame, "Press 'S' to Save  |  'Q' to Quit",
                     (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2, cv2.LINE_AA)
 
@@ -105,7 +119,15 @@ def register_face(name):
                             (20, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2, cv2.LINE_AA)
                 cv2.imshow("Register Face", frame)
                 cv2.waitKey(1)
-                continue  # ไม่ให้บันทึกถ้ายิ้ม/อ้าปาก
+                continue
+
+            # ----- ตรวจหน้าตรง -----
+            if not is_face_straight(landmarks, frame.shape, threshold=0.15):
+                cv2.putText(frame, "Please face straight forward",
+                            (20, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2, cv2.LINE_AA)
+                cv2.imshow("Register Face", frame)
+                cv2.waitKey(1)
+                continue
 
             # วาดกรอบรอบหน้า
             h, w, _ = frame.shape
@@ -126,7 +148,7 @@ def register_face(name):
                 continue
 
             encodings = face_recognition.face_encodings(rgb, boxes)
-            # ตรวจซ้ำ
+
             known_faces = []
             known_names = []
             for file in os.listdir(DATA_DIR):
@@ -157,6 +179,7 @@ def register_face(name):
 
     cap.release()
     cv2.destroyAllWindows()
+
 
 
 

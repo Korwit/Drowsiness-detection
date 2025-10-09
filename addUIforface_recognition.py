@@ -82,29 +82,51 @@ def register_face(name):
 
     cap = cv2.VideoCapture(0)
     print(f"กำลังบันทึกใบหน้า: {name} (กด 'S' เพื่อบันทึก, 'Q' เพื่อออก)")
+
     while True:
         ret, frame = cap.read()
         if not ret:
             break
 
-        # ✅ แสดงข้อความแนะนำบนภาพ
+        # ข้อความบนหน้าจอ
         cv2.putText(frame, "Press 'S' to Save  |  'Q' to Quit",
                     (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2, cv2.LINE_AA)
+
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        mp_results = mp_face_mesh.process(rgb)
+
+        if mp_results.multi_face_landmarks:
+            landmarks = mp_results.multi_face_landmarks[0].landmark
+
+            # ----- ตรวจห้ามยิ้ม/อ้าปาก -----
+            mar = calculate_mar(landmarks, frame.shape)
+            if mar > MAR_THRESHOLD:
+                cv2.putText(frame, "Please close your mouth / no big smile",
+                            (20, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2, cv2.LINE_AA)
+                cv2.imshow("Register Face", frame)
+                cv2.waitKey(1)
+                continue  # ไม่ให้บันทึกถ้ายิ้ม/อ้าปาก
+
+            # วาดกรอบรอบหน้า
+            h, w, _ = frame.shape
+            x_min = min([lm.x for lm in landmarks]) * w
+            x_max = max([lm.x for lm in landmarks]) * w
+            y_min = min([lm.y for lm in landmarks]) * h
+            y_max = max([lm.y for lm in landmarks]) * h
+            cv2.rectangle(frame, (int(x_min), int(y_min)), (int(x_max), int(y_max)), (0, 255, 0), 2)
 
         cv2.imshow("Register Face", frame)
         key = cv2.waitKey(1) & 0xFF
 
         if key == ord('s'):
-            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            # ตรวจใบหน้าซ้ำ
             boxes = face_recognition.face_locations(rgb)
-
             if len(boxes) == 0:
                 print("❌ ไม่พบใบหน้า!")
                 continue
 
             encodings = face_recognition.face_encodings(rgb, boxes)
-
-            # ✅ ตรวจใบหน้าซ้ำก่อนบันทึก
+            # ตรวจซ้ำ
             known_faces = []
             known_names = []
             for file in os.listdir(DATA_DIR):
@@ -122,9 +144,9 @@ def register_face(name):
                     break
 
             if duplicate_found:
-                continue  # กลับไปถ่ายใหม่ ไม่บันทึก
+                continue
 
-            # ✅ ถ้าไม่ซ้ำ ให้บันทึกได้
+            # บันทึก
             np.save(file_path, encodings[0])
             print(f"✅ บันทึกใบหน้า {name} แล้ว!")
             messagebox.showinfo("สำเร็จ", f"บันทึกใบหน้า {name} เรียบร้อยแล้ว!")
@@ -135,6 +157,7 @@ def register_face(name):
 
     cap.release()
     cv2.destroyAllWindows()
+
 
 
 # =================================

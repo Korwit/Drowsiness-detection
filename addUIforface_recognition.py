@@ -279,7 +279,7 @@ def recognize_face_once(frame):
 # =================================
 
 
-def process_webcam(output_file="output.mp4"):
+def process_webcam():
     global ear_counter, mar_counter, drowsy_start_time, yawn_start_time
     global frame_count, face_recognition_locked, current_user_known, known_user_names,last_yawn_time
 
@@ -559,6 +559,6 @@ if __name__ == "__main__":
 
     if args.mode == "webcam":
         print("Starting webcam with drowsiness + face recognition...")
-        process_webcam("output.mp4")
+        process_webcam()
     elif args.mode == "register":
         open_register_ui()

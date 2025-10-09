@@ -76,33 +76,66 @@ def calculate_ear(landmarks, image_shape, eye='left'):
 def register_face(name):
     file_path = os.path.join(DATA_DIR, f"{name}.npy")
     if os.path.exists(file_path):
-        messagebox.showwarning("ชื่อซ้ำ", f" ชื่อ '{name}' มีอยู่แล้ว!\nกรุณาใช้ชื่ออื่น")
-        print(f" ชื่อ '{name}' มีอยู่แล้ว!")
+        messagebox.showwarning("ชื่อซ้ำ", f"ชื่อ '{name}' มีอยู่แล้ว!\nกรุณาใช้ชื่ออื่น")
+        print(f"ชื่อ '{name}' มีอยู่แล้ว!")
         return
 
     cap = cv2.VideoCapture(0)
-    print(f"กำลังบันทึกใบหน้า: {name} (กด 's' เพื่อบันทึก, 'q' เพื่อออก)")
+    print(f"กำลังบันทึกใบหน้า: {name} (กด 'S' เพื่อบันทึก, 'Q' เพื่อออก)")
     while True:
         ret, frame = cap.read()
         if not ret:
             break
+
+        # ✅ แสดงข้อความแนะนำบนภาพ
+        cv2.putText(frame, "Press 'S' to Save  |  'Q' to Quit",
+                    (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2, cv2.LINE_AA)
+
         cv2.imshow("Register Face", frame)
         key = cv2.waitKey(1) & 0xFF
+
         if key == ord('s'):
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             boxes = face_recognition.face_locations(rgb)
+
             if len(boxes) == 0:
                 print("❌ ไม่พบใบหน้า!")
                 continue
+
             encodings = face_recognition.face_encodings(rgb, boxes)
+
+            # ✅ ตรวจใบหน้าซ้ำก่อนบันทึก
+            known_faces = []
+            known_names = []
+            for file in os.listdir(DATA_DIR):
+                if file.endswith(".npy"):
+                    known_faces.append(np.load(os.path.join(DATA_DIR, file)))
+                    known_names.append(file.replace(".npy", ""))
+
+            duplicate_found = False
+            for existing_face, existing_name in zip(known_faces, known_names):
+                match = face_recognition.compare_faces([existing_face], encodings[0], tolerance=0.45)
+                if match[0]:
+                    duplicate_found = True
+                    messagebox.showwarning("พบใบหน้าซ้ำ", f"ใบหน้านี้เคยลงทะเบียนเป็น '{existing_name}' แล้ว!")
+                    print(f"ใบหน้านี้ตรงกับ {existing_name} ที่มีอยู่แล้ว")
+                    break
+
+            if duplicate_found:
+                continue  # กลับไปถ่ายใหม่ ไม่บันทึก
+
+            # ✅ ถ้าไม่ซ้ำ ให้บันทึกได้
             np.save(file_path, encodings[0])
             print(f"✅ บันทึกใบหน้า {name} แล้ว!")
-            messagebox.showinfo("สำเร็จ", f"✅ บันทึกใบหน้า {name} เรียบร้อยแล้ว!")
+            messagebox.showinfo("สำเร็จ", f"บันทึกใบหน้า {name} เรียบร้อยแล้ว!")
             break
+
         elif key == ord('q'):
             break
+
     cap.release()
     cv2.destroyAllWindows()
+
 
 # =================================
 # Face Recognition (เรียกครั้งเดียว)

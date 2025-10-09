@@ -13,6 +13,7 @@ import mediapipe as mp
 import time
 import csv
 from datetime import datetime
+import threading
 
 # =================================
 # Load YOLO Drowsiness Model
@@ -50,7 +51,8 @@ face_recognition_locked = False  # True ถ้าเจอ known user แล้�
 current_user_known = False
 known_user_names = []
 
-
+def play_sound(file_path): 
+    threading.Thread(target=playsound, args=(file_path,), daemon=True).start()
 
 def log_drowsiness_event(user_name, event_type):
     """
@@ -306,7 +308,7 @@ def process_webcam(output_file="output.mp4"):
                 frame, names_detected = recognize_face_once(frame)
                 if "Unknown" not in names_detected and len(names_detected) > 0:
                     known_user_names = names_detected
-                    playsound("hi.mp3")
+                    play_sound("hi.mp3")
                     face_recognition_locked = True
                     current_user_known = True
                     print(f"✅ Registered user detected: {names_detected}")
@@ -345,7 +347,7 @@ def process_webcam(output_file="output.mp4"):
                             yawn_start_time = current_time
                         elif mar_counter >= MAR_FRAMES and current_time - yawn_start_time >= 0.5 and not alarm_played_mar:
                             print("😮 Yawning detected!")
-                            playsound("yawn.mp3")
+                            play_sound("yawn.mp3")
                             yawning_detected = True
                             alarm_played_mar = True
                             if known_user_names:
@@ -362,7 +364,7 @@ def process_webcam(output_file="output.mp4"):
                             drowsy_start_time = current_time
                         elif ear_counter >= EAR_FRAMES and current_time - drowsy_start_time >= 1.5 and not alarm_played_ear:
                             print("😴 Eyes closed detected!")
-                            playsound("alarm.mp3")  # เล่นทันทีโดยไม่สนใจ yawn
+                            play_sound("alarm.mp3")  # เล่นทันทีโดยไม่สนใจ yawn
                             eyes_closed_detected = True
                             alarm_played_ear = True
                             if known_user_names:

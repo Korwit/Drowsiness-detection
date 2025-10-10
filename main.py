@@ -316,7 +316,7 @@ def process_webcam():
                 frame, names_detected = recognize_face_once(frame)
                 if "Unknown" not in names_detected and len(names_detected) > 0:
                     known_user_names = names_detected
-                    play_sound("hi.mp3")
+                    play_sound("sound/hi.mp3")
                     face_recognition_locked = True
                     current_user_known = True
                     print(f"✅ Registered user detected: {names_detected}")
@@ -355,7 +355,7 @@ def process_webcam():
                             yawn_start_time = current_time
                         elif mar_counter >= MAR_FRAMES and current_time - yawn_start_time >= 0.5 and not alarm_played_mar:
                             print("😮 Yawning detected!")
-                            play_sound("yawn.mp3")
+                            play_sound("sound/yawn.mp3")
                             last_yawn_time = current_time
                             yawning_detected = True
                             alarm_played_mar = True
@@ -377,7 +377,7 @@ def process_webcam():
 
                             if current_time - drowsy_start_time >= 2.0:
                                 print("😴 Eyes closed detected! Alarm!")
-                                play_sound("alarm.mp3")
+                                play_sound("sound/alarm.mp3")
                                 if known_user_names:
                                     log_drowsiness_event(known_user_names[0], "Eyes Closed")
                                 drowsy_start_time = current_time

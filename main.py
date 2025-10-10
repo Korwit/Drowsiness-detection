@@ -21,7 +21,7 @@ import platform
 # =================================
 # Load YOLO Drowsiness Model
 # =================================
-model = YOLO("drowsy.pt")
+model = YOLO("model.pt")
 
 # =================================
 # Mediapipe Face Mesh
@@ -354,7 +354,7 @@ def process_webcam():
                         if yawn_start_time is None:
                             yawn_start_time = current_time
                         elif mar_counter >= MAR_FRAMES and current_time - yawn_start_time >= 0.5 and not alarm_played_mar:
-                            print("😮 Yawning detected!")
+                            print("Yawning detected!")
                             play_sound("sound/yawn.mp3")
                             last_yawn_time = current_time
                             yawning_detected = True
@@ -371,12 +371,12 @@ def process_webcam():
                     # -------------------------
                     if ear_avg < EAR_THRESHOLD:
                         # ตรวจว่าเสียง yawn เล่นจบไปแล้ว 2 วินาทีขึ้นไป และ alarm ไม่ซ้อน
-                        if current_time - last_yawn_time >= 2.0 and not alarm_running:
+                        if current_time - last_yawn_time >= 2.5 and not alarm_running:
                             if drowsy_start_time is None:
                                 drowsy_start_time = current_time
 
                             if current_time - drowsy_start_time >= 2.0:
-                                print("😴 Eyes closed detected! Alarm!")
+                                print("Eyes closed detected! Alarm!")
                                 play_sound("sound/alarm.mp3")
                                 if known_user_names:
                                     log_drowsiness_event(known_user_names[0], "Eyes Closed")
